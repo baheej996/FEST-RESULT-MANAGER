@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+*.db
+*.db-journal
+*.log
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.DS_Store
+Thumbs.db
+

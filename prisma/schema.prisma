@@ -1,0 +1,298 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String      @id @default(uuid())
+  name         String
+  email        String      @unique
+  username     String?     @unique
+  passwordHash String
+  role         String      @default("JUDGE") // SUPER_ADMIN, PROGRAM_ADMIN, JUDGE, VERIFIER
+  phone        String?
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  enteredMarks Mark[]
+  approvals    Result[]    @relation("VerifiedResults")
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+model Festival {
+  id          String      @id @default(uuid())
+  name        String
+  code        String      @unique
+  year        Int
+  startDate   DateTime
+  endDate     DateTime
+  venue       String
+  description String?
+  logoUrl     String?
+  status      String      @default("ACTIVE") // UPCOMING, ACTIVE, COMPLETED, ARCHIVED
+  isPublished Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  institutions      Institution[]
+  participants      Participant[]
+  programCategories ProgramCategory[]
+  programs          Program[]
+  judges            Judge[]
+  institutionPoints InstitutionPoint[]
+  auditLogs         AuditLog[]
+
+  @@map("festivals")
+}
+
+model Institution {
+  id            String      @id @default(uuid())
+  festivalId    String
+  name          String
+  code          String
+  district      String?
+  category      String?
+  contactPerson String?
+  contactEmail  String?
+  contactPhone  String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  festival      Festival            @relation(fields: [festivalId], references: [id], onDelete: Cascade)
+  participants  Participant[]
+  entries       CompetitionEntry[]
+  pointsSummary InstitutionPoint?
+
+  @@unique([festivalId, code])
+  @@map("institutions")
+}
+
+model Participant {
+  id             String      @id @default(uuid())
+  festivalId     String
+  institutionId  String
+  registrationNo String
+  name           String
+  category       String      // Sub-Junior, Junior, Senior, General
+  gradeClass     String?     // Class 8, Class 10, etc.
+  gender         String?     // Male, Female, Other
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  festival     Festival       @relation(fields: [festivalId], references: [id], onDelete: Cascade)
+  institution  Institution    @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  entryMembers EntryMember[]
+
+  @@unique([festivalId, registrationNo])
+  @@map("participants")
+}
+
+model ProgramCategory {
+  id         String      @id @default(uuid())
+  festivalId String
+  name       String
+  code       String
+  sortOrder  Int         @default(0)
+  createdAt  DateTime    @default(now())
+
+  festival   Festival    @relation(fields: [festivalId], references: [id], onDelete: Cascade)
+  programs   Program[]
+
+  @@unique([festivalId, code])
+  @@map("program_categories")
+}
+
+model Program {
+  id              String      @id @default(uuid())
+  festivalId      String
+  categoryId      String
+  name            String
+  code            String
+  type            String      @default("INDIVIDUAL") // INDIVIDUAL, GROUP
+  section         String      // Category 1, Category 2, Category 3, Category 4
+  maxMarks        Float       @default(100.0)
+  judgeCount      Int         @default(3)
+  scoringMethod   String      @default("AVERAGE") // AVERAGE, TOTAL, DROP_HIGH_LOW
+  status          String      @default("SCHEDULED") // SCHEDULED, READY_FOR_MARKS, MARKS_ENTERED, UNDER_VERIFICATION, APPROVED, PUBLISHED
+  positionPoints  String      @default("{\"1\": 5, \"2\": 3, \"3\": 1}") // JSON string
+  gradeBoundaries String      @default("[{\"grade\": \"A\", \"minPercentage\": 70, \"points\": 5}, {\"grade\": \"B\", \"minPercentage\": 60, \"points\": 3}, {\"grade\": \"C\", \"minPercentage\": 50, \"points\": 1}]") // JSON string
+  tiePolicy       String      @default("SHARED") // SHARED, SPLIT, MANUAL
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  festival         Festival          @relation(fields: [festivalId], references: [id], onDelete: Cascade)
+  category         ProgramCategory   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  entries          CompetitionEntry[]
+  judgeAssignments JudgeAssignment[]
+  result           Result?
+
+  @@unique([festivalId, code])
+  @@map("programs")
+}
+
+model CompetitionEntry {
+  id            String      @id @default(uuid())
+  programId     String
+  institutionId String
+  chestNo       String
+  groupName     String?
+  status        String      @default("REGISTERED") // REGISTERED, PERFORMED, ABSENT, DISQUALIFIED, WITHHELD
+  createdAt     DateTime    @default(now())
+
+  program        Program         @relation(fields: [programId], references: [id], onDelete: Cascade)
+  institution    Institution     @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  members        EntryMember[]
+  marks          Mark[]
+  resultPosition ResultPosition?
+
+  @@unique([programId, chestNo])
+  @@map("competition_entries")
+}
+
+model EntryMember {
+  id            String      @id @default(uuid())
+  entryId       String
+  participantId String
+  isLeader      Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+
+  entry         CompetitionEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  participant   Participant      @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, participantId])
+  @@map("entry_members")
+}
+
+model Judge {
+  id             String      @id @default(uuid())
+  festivalId     String
+  name           String
+  judgeCode      String
+  phone          String?
+  specialization String?
+  createdAt      DateTime    @default(now())
+
+  festival    Festival          @relation(fields: [festivalId], references: [id], onDelete: Cascade)
+  assignments JudgeAssignment[]
+
+  @@unique([festivalId, judgeCode])
+  @@map("judges")
+}
+
+model JudgeAssignment {
+  id         String   @id @default(uuid())
+  programId  String
+  judgeId    String
+  judgeIndex Int      // 1, 2, 3...
+  createdAt  DateTime @default(now())
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  judge   Judge   @relation(fields: [judgeId], references: [id], onDelete: Cascade)
+
+  @@unique([programId, judgeIndex])
+  @@map("judge_assignments")
+}
+
+model Mark {
+  id              String      @id @default(uuid())
+  entryId         String
+  judgeIndex      Int         // 1, 2, 3
+  mark            Float
+  criteriaScores  String?     // JSON breakdown if needed
+  remarks         String?
+  isDraft         Boolean     @default(false)
+  enteredByUserId String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  entry     CompetitionEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  enteredBy User?            @relation(fields: [enteredByUserId], references: [id])
+
+  @@unique([entryId, judgeIndex])
+  @@map("marks")
+}
+
+model Result {
+  id               String      @id @default(uuid())
+  programId        String      @unique
+  status           String      @default("DRAFT") // DRAFT, SUBMITTED, UNDER_VERIFICATION, APPROVED, PUBLISHED
+  calculatedAt     DateTime    @default(now())
+  verifiedByUserId String?
+  verifiedAt       DateTime?
+  publishedAt      DateTime?
+  notes            String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  program    Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  verifiedBy User?            @relation("VerifiedResults", fields: [verifiedByUserId], references: [id])
+  positions  ResultPosition[]
+
+  @@map("results")
+}
+
+model ResultPosition {
+  id              String      @id @default(uuid())
+  resultId        String
+  entryId         String      @unique
+  totalScore      Float
+  finalScore      Float
+  percentage      Float
+  rank            Int
+  position        String      @default("None") // 1st, 2nd, 3rd, None
+  grade           String      @default("None") // A, B, C, None
+  positionPoints  Float       @default(0.0)
+  gradePoints     Float       @default(0.0)
+  totalPoints     Float       @default(0.0)
+  isTied          Boolean     @default(false)
+  status          String      @default("NORMAL") // NORMAL, ABSENT, DISQUALIFIED, WITHHELD
+
+  result Result           @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  entry  CompetitionEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@map("result_positions")
+}
+
+model InstitutionPoint {
+  id            String      @id @default(uuid())
+  festivalId    String
+  institutionId String      @unique
+  totalPoints   Float       @default(0.0)
+  firstCount    Int         @default(0)
+  secondCount   Int         @default(0)
+  thirdCount    Int         @default(0)
+  gradeACount   Int         @default(0)
+  rank          Int         @default(0)
+  updatedAt     DateTime    @updatedAt
+
+  festival    Festival    @relation(fields: [festivalId], references: [id], onDelete: Cascade)
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@unique([festivalId, institutionId])
+  @@map("institution_points")
+}
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  userId     String?
+  festivalId String?
+  action     String
+  entityType String
+  entityId   String
+  payload    String?     // JSON text
+  ipAddress  String?
+  createdAt  DateTime    @default(now())
+
+  user     User?     @relation(fields: [userId], references: [id])
+  festival Festival? @relation(fields: [festivalId], references: [id])
+
+  @@map("audit_logs")
+}
+
