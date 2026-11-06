@@ -47,3 +47,41 @@ export async function POST(request: Request) {
   }
 }
 
+export async function DELETE(request: Request) {
+  try {
+    await requireAuth(['SUPER_ADMIN']);
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'Festival ID is required' }, { status: 400 });
+    }
+
+    // Check festival exists
+    const festival = await prisma.festival.findUnique({
+      where: { id },
+    });
+
+    if (!festival) {
+      return NextResponse.json({ error: 'Festival not found' }, { status: 404 });
+    }
+
+    // Delete associated audit logs first if any reference this festival
+    await prisma.auditLog.deleteMany({
+      where: { festivalId: id },
+    });
+
+    // Delete festival (cascades to institutions, programs, participants, etc.)
+    await prisma.festival.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ success: true, deletedName: festival.name });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || 'Failed to delete festival' },
+      { status: 400 }
+    );
+  }
+}
+

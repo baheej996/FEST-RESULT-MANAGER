@@ -2,12 +2,16 @@
 
 import React, { useEffect, useState } from 'react';
 import AdminTopbar from '@/components/admin-topbar';
-import { Calendar, Plus, MapPin, CheckCircle, Clock, Archive, Sparkles } from 'lucide-react';
+import { Calendar, Plus, MapPin, CheckCircle, Clock, Archive, Sparkles, Trash2, AlertTriangle, Check } from 'lucide-react';
 
 export default function FestivalsPage() {
   const [festivals, setFestivals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [festivalToDelete, setFestivalToDelete] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   const [newFest, setNewFest] = useState({
     name: '',
     code: '',
@@ -26,6 +30,10 @@ export default function FestivalsPage() {
       .then((data) => {
         setFestivals(data.festivals || []);
         setLoading(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setLoading(false);
       });
   };
 
@@ -43,10 +51,42 @@ export default function FestivalsPage() {
       });
       if (res.ok) {
         setShowAddModal(false);
+        setMessage({ type: 'success', text: `Festival ${newFest.name} created successfully.` });
         fetchFestivals();
+      } else {
+        const data = await res.json();
+        setMessage({ type: 'error', text: data.error || 'Failed to create festival' });
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      setMessage({ type: 'error', text: e.message || 'Error occurred' });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!festivalToDelete) return;
+    setIsDeleting(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch(`/api/festivals?id=${festivalToDelete.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete festival');
+      }
+
+      setMessage({
+        type: 'success',
+        text: `Festival "${festivalToDelete.name}" (${festivalToDelete.code}) was deleted successfully.`,
+      });
+      setFestivalToDelete(null);
+      fetchFestivals();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -58,10 +98,35 @@ export default function FestivalsPage() {
       />
 
       <main className="p-8 space-y-6 flex-1">
+        {/* Status notification */}
+        {message && (
+          <div
+            className={`p-4 rounded-xl text-xs font-semibold flex items-center justify-between shadow-sm ${
+              message.type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                : 'bg-rose-50 text-rose-800 border border-rose-200'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {message.type === 'success' ? (
+                <CheckCircle className="w-4 h-4 text-emerald-600" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-rose-600" />
+              )}
+              <span>{message.text}</span>
+            </div>
+            <button onClick={() => setMessage(null)} className="font-bold text-xs">
+              ✕
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <div>
             <h2 className="text-sm font-bold text-slate-900">Festival Editions</h2>
-            <p className="text-xs text-slate-500">All data across schools, participants and programs is strictly partitioned by festival</p>
+            <p className="text-xs text-slate-500">
+              All data across schools, participants, and programs is strictly partitioned by festival
+            </p>
           </div>
           <button
             onClick={() => setShowAddModal(true)}
@@ -72,60 +137,137 @@ export default function FestivalsPage() {
           </button>
         </div>
 
+        {/* Festival Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {festivals.map((fest) => (
-            <div
-              key={fest.id}
-              className={`bg-white rounded-2xl border p-6 shadow-sm space-y-4 transition-all ${
-                fest.status === 'ACTIVE'
-                  ? 'border-indigo-600 ring-2 ring-indigo-50'
-                  : 'border-slate-200'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-100 border border-slate-200">
-                  {fest.code}
-                </span>
-                <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    fest.status === 'ACTIVE'
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : fest.status === 'UPCOMING'
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                      : 'bg-slate-100 text-slate-700'
-                  }`}
-                >
-                  {fest.status}
-                </span>
+          {loading ? (
+            <div className="col-span-2 py-12 text-center text-xs text-slate-400">
+              Loading festival records...
+            </div>
+          ) : festivals.length === 0 ? (
+            <div className="col-span-2 py-12 text-center text-xs text-slate-400">
+              No festival editions found. Create one to get started.
+            </div>
+          ) : (
+            festivals.map((fest) => (
+              <div
+                key={fest.id}
+                className={`bg-white rounded-2xl border p-6 shadow-sm space-y-4 transition-all relative ${
+                  fest.status === 'ACTIVE'
+                    ? 'border-indigo-600 ring-2 ring-indigo-50'
+                    : 'border-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-100 border border-slate-200">
+                      {fest.code}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        fest.status === 'ACTIVE'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : fest.status === 'UPCOMING'
+                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                          : 'bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      {fest.status}
+                    </span>
+                  </div>
+
+                  {/* Actions: Delete Button */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setFestivalToDelete(fest)}
+                      title="Delete Festival"
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-100 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">{fest.name}</h3>
+                  <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-indigo-600" />
+                    {fest.venue}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-center text-xs font-mono">
+                  <div className="p-2 bg-slate-50 rounded-lg">
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Schools</span>
+                    <span className="font-bold text-slate-800">{fest._count?.institutions || 0}</span>
+                  </div>
+                  <div className="p-2 bg-slate-50 rounded-lg">
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Events</span>
+                    <span className="font-bold text-slate-800">{fest._count?.programs || 0}</span>
+                  </div>
+                  <div className="p-2 bg-slate-50 rounded-lg">
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Candidates</span>
+                    <span className="font-bold text-slate-800">{fest._count?.participants || 0}</span>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Delete Confirmation Modal */}
+        {festivalToDelete && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 space-y-4">
+              <div className="w-12 h-12 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center">
+                <Trash2 className="w-6 h-6" />
               </div>
 
               <div>
-                <h3 className="text-lg font-bold text-slate-900">{fest.name}</h3>
-                <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-indigo-600" />
-                  {fest.venue}
+                <h3 className="text-base font-bold text-slate-900">
+                  Delete Festival: {festivalToDelete.name}?
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Are you sure you want to permanently delete{' '}
+                  <strong className="text-slate-800">{festivalToDelete.name}</strong> (
+                  <span className="font-mono text-indigo-600 font-bold">{festivalToDelete.code}</span>
+                  )?
                 </p>
+                <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                  ⚠️ <strong>Warning:</strong> This will permanently delete all associated schools,
+                  competition items, student entries, marks, and result calculations for this festival edition.
+                </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-center text-xs font-mono">
-                <div className="p-2 bg-slate-50 rounded-lg">
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Schools</span>
-                  <span className="font-bold text-slate-800">{fest._count?.institutions || 0}</span>
-                </div>
-                <div className="p-2 bg-slate-50 rounded-lg">
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Events</span>
-                  <span className="font-bold text-slate-800">{fest._count?.programs || 0}</span>
-                </div>
-                <div className="p-2 bg-slate-50 rounded-lg">
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Candidates</span>
-                  <span className="font-bold text-slate-800">{fest._count?.participants || 0}</span>
-                </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setFestivalToDelete(null)}
+                  className="px-4 py-2 border border-slate-200 rounded-lg font-semibold text-slate-600 hover:bg-slate-50 text-xs transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={confirmDelete}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs shadow-sm shadow-rose-200 transition-all flex items-center gap-1.5"
+                >
+                  {isDeleting ? (
+                    <span>Deleting...</span>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Permanently Delete</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        )}
 
-        {/* Modal */}
+        {/* Create Modal */}
         {showAddModal && (
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200">
@@ -222,4 +364,3 @@ export default function FestivalsPage() {
     </>
   );
 }
-
