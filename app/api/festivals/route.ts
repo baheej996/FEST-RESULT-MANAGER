@@ -47,6 +47,37 @@ export async function POST(request: Request) {
   }
 }
 
+export async function PUT(request: Request) {
+  try {
+    await requireAuth(['SUPER_ADMIN']);
+    const body = await request.json();
+    const { id, name, code, year, startDate, endDate, venue, description, status, isPublished } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: 'Festival ID is required' }, { status: 400 });
+    }
+
+    const updated = await prisma.festival.update({
+      where: { id },
+      data: {
+        name: name ? name.trim() : undefined,
+        code: code ? code.toUpperCase().trim() : undefined,
+        year: year ? parseInt(year) : undefined,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        venue: venue ? venue.trim() : undefined,
+        description: description !== undefined ? description : undefined,
+        status: status || undefined,
+        isPublished: isPublished !== undefined ? isPublished : undefined,
+      },
+    });
+
+    return NextResponse.json({ festival: updated });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Failed to update festival' }, { status: 400 });
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
     await requireAuth(['SUPER_ADMIN']);
